@@ -8,29 +8,26 @@
 2. Get the .root file (location from Francesco): `https://cernbox.cern.ch/rootjs/public/qJykQrcBIjiCEzi/`
 3. Sofware setup for preprocessing currently using swan notebooks with the LCG102b enviornment.
 
-
 ## Step 2: Preprocessing
 
 The notebook `Ntuple-Exploration.ipynb` is my work in progress for the updated preprocessing.
 
-I'm still working on the aspect of defining the track's with respect to the PV (needed for the preprocessing cuts on the IPs).
-I've added this to the to do list below.
+The track's IP still need to be defined with respect to the PV.
+I've added this to the to do list below and made notes in the notebook.
 
-**Plan:** After finalizing the functions, I'll put these funcions in a script to process more easily!!
+Also, to run this as a swan notebook can only handle 16 GB of data, so the notebook is currently only processing 1500 events, but I think putting these function in a script with batching the reading, jet, track and track sort will let us process the whole root file quickly :) 
+
+But I wanted to share the notebook first, b/c I think this is a little more intuitive.
 
 ## Step 3: Training
 
-Inside of the `Deep-Sets` folder are the notebooks from the Berkeley workshop, after finishing the pre-processing notebook, I plan to edit these too to harmonize w/ the output of `Ntuple-Exploration.ipynb`.
+`Deep-Sets-tutorial.ipynb` is a pedagogical version for DIPS from a recent [tutorial]() I gave at Berkeley, and the solutions for the exercises are in `Deep-Sets-soln.ipynb`.
 
 ## To keep in mind (with the new ACTS Ntuple)
 
-**Before a first
-- Check the IP calc w/r.t. the PV
-- How do we get the other track parameters (and errors) w/r.t. the PV?
-
-**Next steps
+- Get the Impact Parameters w/r.t. the PV.
 - Add the lifetime IP sign
 - Implement a prompt muon / lepton veto
 - Maybe to be consitent with the FTAG track selection with a $p_T$ dependent $\Delta R$ cut? 
 - Use resampling for the FTAG training instead
-- Brainstorm with Lorenzo to add the rest of the track quality inputs to the Ntuple
+- Add the rest of the track quality inputs to the Ntuple
