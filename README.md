@@ -8,7 +8,6 @@
 2. Get the .root file (location from Francesco): `https://cernbox.cern.ch/rootjs/public/qJykQrcBIjiCEzi/`
 3. Sofware setup for preprocessing currently using swan notebooks with the LCG102b enviornment.
 
-(When Ariel gets Camille and Madison accounts, I can revise this for the SLAC machines.)
 
 ## Step 2: Preprocessing
 
@@ -23,7 +22,7 @@ I've added this to the to do list below.
 
 Inside of the `Deep-Sets` folder are the notebooks from the Berkeley workshop, after finishing the pre-processing notebook, I plan to edit these too to harmonize w/ the output of `Ntuple-Exploration.ipynb`.
 
-## TO DO
+## To keep in mind (with the new ACTS Ntuple)
 
 **Before a first
 - Check the IP calc w/r.t. the PV
