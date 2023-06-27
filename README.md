@@ -31,3 +31,6 @@ But I wanted to share the notebook first, b/c I think this is a little more intu
 - Maybe to be consitent with the FTAG track selection with a $p_T$ dependent $\Delta R$ cut? 
 - Use resampling for the FTAG training instead
 - Add the rest of the track quality inputs to the Ntuple
+
+
+**Logo credit:** Ty to the one and only [Katharine Leney](https://twitter.com/PhysicsCakes)!
