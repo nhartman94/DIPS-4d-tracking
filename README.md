@@ -6,7 +6,10 @@
 
 1. Clone this repo.
 2. Get the .root file (location from Francesco): `https://cernbox.cern.ch/rootjs/public/qJykQrcBIjiCEzi/`
-3. Sofware setup for preprocessing currently using swan notebooks with the LCG102b enviornment.
+3. Sofware setup for preprocessing currently using the LCG103 enviornment.
+   - To run from the terminal:
+     `source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_103 x86_64-centos7-gcc11-opt`
+   - Notebooks can just be run with SWAN
 
 ## Step 2: Preprocessing
 
