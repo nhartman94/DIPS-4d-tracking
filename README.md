@@ -8,7 +8,13 @@
 2. Get the .root file (location from Francesco): `https://cernbox.cern.ch/rootjs/public/qJykQrcBIjiCEzi/`
 3. Sofware setup for preprocessing currently using the LCG103 enviornment.
    - To run from the terminal:
+     
      `source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_103 x86_64-centos7-gcc11-opt`
+
+     `python root_to_ml.py --filename data/hadded.root`
+
+      (For the hadded.root ATLAS Ntuple from Lorenzo, should take ~ 12 min.)
+
    - Notebooks can just be run with SWAN
 
 ## Step 2: Preprocessing
