@@ -57,17 +57,11 @@ talias['pt']  = '0.001 * abs(1/qOverP) * sin(theta)'
 talias['eta']  = '- log(tan(theta/2))'
 
 
-def processBatch(t,start,stop,iVars,deriv_vars,maxNumTrks=40,sort_var="abs_sd0"):
+def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var="abs_sd0"):
     '''
     Goal: Given the tree and a start and a stop, process this
           bunch of the tracks.
     '''
-
-    # Load in the jet array
-    jdf = t.arrays(jet_vars,library='pd',aliases=jalias,
-                   entry_start=start,entry_stop=stop)
-
-    jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
 
     # load in the track level array
     tak = t.arrays(trk_vars+['sd0','sz0','pt','eta','abs_sd0'],aliases=talias,
@@ -86,7 +80,6 @@ def processBatch(t,start,stop,iVars,deriv_vars,maxNumTrks=40,sort_var="abs_sd0")
     - the tracks we select (in the tarr computation) 
     - and the same mask gets applied to jdf
     """
-    jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
     njets_all = np.array([len(jdf.loc[i,'pt']) for i in range(start,start+nEvts)])
     jmask_hier = ak.unflatten(jmask,counts=njets_all)
 
@@ -206,7 +199,8 @@ def scale(data, var_names, savevars, filename='data/trk_scales.json', mask_value
             print('Scaling feature {} of {} ({}).'.format(v + 1, len(var_names), name))
             f = data[:, :, v]
             slc = f[mask]
-            m, s = slc.mean(), slc.std()
+            m = np.mean(slc)
+            s = np.std(slc)
             slc -= m
             slc /= s
             data[:, :, v][mask] = slc.astype('float32')
@@ -293,7 +287,7 @@ def prepareForKeras(jet,trk_xr,outputFile):
     # Step 2: Train / test split
     pdg_to_class = {0:0, 4:1, 5:2, 15:3}
     y = jdf.label.replace(pdg_to_class).values
-    
+   
     random_seed = 25
     X_train, X_test, y_train, y_test, ix_train, ix_test, w_train, w_test, = \
         train_test_split(X, y, ix, jdf.sample_weight, test_size=0.333,
@@ -376,7 +370,6 @@ if __name__ == '__main__':
     # Step 2a: Load in the jets
     jdf = t.arrays(jet_vars,library='pd',aliases=jalias)
     jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
-    jdf = jdf[jmask] 
 
     # Step 2b: Read in just a part of the tree and batch the track preprocessing over these chunks
     batch_size = 1500
@@ -390,8 +383,8 @@ if __name__ == '__main__':
 
     maxNumTrks=40
 
-    trk_xr = xr.DataArray(0,
-                      coords=[('jet',np.arange(len(jdf))),
+    trk_xr = xr.DataArray(0.,
+                      coords=[('jet',np.arange(np.sum(jmask))),
                               ('trk',np.arange(maxNumTrks)),
                               ('var',iVars+deriv_vars)])
 
@@ -399,12 +392,21 @@ if __name__ == '__main__':
     i=0
     for start, stop in tqdm(zip(chunks[:-1],chunks[1:])):
 
-        t_np_i = processBatch(t,start,stop,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
+        jdf_i   =   jdf.loc[(slice(start,stop-1),slice(None))]
+        jmask_i = jmask.loc[(slice(start,stop-1),slice(None))]
+
+        t_np_i = processBatch(t,start,stop,jdf_i,jmask_i,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
 
         trk_xr[i:i+t_np_i.shape[0]] = t_np_i         
         i += t_np_i.shape[0]
 
-    # Step 3: ML pre-processing
+
+    jdf = jdf[jmask] 
+
+    # Step 3: Jet pt reweighting
+    pTReweight(jdf)
+
+    # Step 4: ML pre-processing
     prepareForKeras(jdf,trk_xr,outputFile)
 
-
+  
