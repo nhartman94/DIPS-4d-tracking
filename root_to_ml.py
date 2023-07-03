@@ -127,6 +127,47 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     return tnp
 
 
+def concatData(fName):
+    '''
+    Given a (globbed) input fName (to the .h5 or .nc file),
+    concat the df and xarrays to return a concatenated:
+    jdf, txr
+    '''
+
+    # Step 0: Infer whether this is a .h5 or .nc file
+    if '.h5' in fName:
+       is_jet_df = True
+    if '.nc' in fName:
+       is_jet_df = False
+    else:
+        print(f'File format for {fName} not supported: should be .h5 or .nc')
+        raise NotImplemented Error
+
+    # Step 1: Load in all the files and make a list
+    jdfs = []
+    txrs = [] 
+    for fin in glob(fName): 
+
+       if is_jet_df:
+          jet_fin = fin
+          trk_fin = fin.replace('.h5','.nc')      
+       else:
+          jet_fin = fin.replace('.nc','.h5')      
+          trk_fin = fin      
+
+       jdf_i = pd.read_hdf5(jet_fin) 
+       txr_i = xr.open_dataarray(trk_fin)
+
+       jdfs.append(jdf_i)
+       txrs.append(txr_i)
+
+
+    # Step 2: Concatenate them together and return
+    jdf = pd.concat(jdfs)
+    txr = xr.concat(txrs)
+
+    return jdf, txr
+
 def pTReweight(jdf):
     '''
     Do the pT reweighting for the sample, and add a new col 
@@ -241,7 +282,7 @@ def scale(data, var_names, savevars, filename='data/trk_scales.json', mask_value
             varinfo['n_samples_seen'] = scaler.n_samples_seen_
             scaler.transform(jetData)
 
-def prepareForKeras(jet,trk_xr,outputFile):
+def prepareForKeras(jet,trk_xr,outputFile,mode=''):
     '''
     Prepare the ML inputs for keras and save the file
     
@@ -283,16 +324,22 @@ def prepareForKeras(jet,trk_xr,outputFile):
     for i, v in enumerate(logNormVars):
         j = i + len(noNormVars)
         X[:,:,j][mask] = np.log(np.where(X[:,:,j][mask]==0,1e-8,X[:,:,j][mask]))
-    
-    # Step 2: Train / test split
+
+    # Go from pdg ID to the integers for the considered classes 
     pdg_to_class = {0:0, 4:1, 5:2, 15:3}
     y = jdf.label.replace(pdg_to_class).values
-   
-    random_seed = 25
-    X_train, X_test, y_train, y_test, ix_train, ix_test, w_train, w_test, = \
-        train_test_split(X, y, ix, jdf.sample_weight, test_size=0.333,
-                         random_state=random_seed)
     
+    # Step 2: Train / test split (if mode is an empty string
+    if len(mode) == 0: 
+        random_seed = 25
+        X_train, X_test, y_train, y_test, ix_train, ix_test, w_train, w_test, = \
+            train_test_split(X, y, ix, jdf.sample_weight, test_size=0.333,
+                             random_state=random_seed)
+    elif mode == 'train':
+        X_train = X   
+    elif mode == 'test':
+        X_test = X   
+ 
     # Step 3: Normalize the requested inputs
     
     # Get a string representing the variables getting scaled
@@ -303,23 +350,26 @@ def prepareForKeras(jet,trk_xr,outputFile):
     # Scale the vars and save the files
     scalingfile = f"data/scale_{varTag}.json"
     print("scalingfile",scalingfile)
-    
+   
+    myDict = {}
+ 
     if len(logNormVars)+len(jointNormVars) > 0:
+   
+        if mode != "test": 
+            scale(X_train[:,:,len(noNormVars):], logNormVars+jointNormVars, savevars=True,  filename=scalingfile)
+
+            myDict["X_train"]       =  X_train
+            myDict["y_train"]       =  y_train
+            myDict["ix_train"]      = ix_train
+            myDict["weights_train"] =  w_train
+
+
+        if mode != "train": 
+            scale(X_test[:,:, len(noNormVars):], logNormVars+jointNormVars, savevars=False, filename=scalingfile)
     
-        scale(X_train[:,:,len(noNormVars):], logNormVars+jointNormVars, savevars=True,  filename=scalingfile)
-        scale(X_test[:,:, len(noNormVars):], logNormVars+jointNormVars, savevars=False, filename=scalingfile)
-    
-    myDict = {
-        "X_train" : X_train,
-        "y_train" : y_train,
-        "ix_train" : ix_train,
-        "weights_train" : w_train,
-    
-        "X_test" : X_test,
-        "y_test" : y_test,
-        "ix_test" : ix_test,
-        "weights_test" : w_test,
-    }
+            myDict["X_test"]  =   X_test
+            myDict["y_test"]  =   y_test
+            myDict["ix_test"] =  ix_test
     
     # Step 4: Save as h5py files
     print("Saving datasets in {}".format(outputFile))
@@ -352,61 +402,112 @@ if __name__ == '__main__':
                    dest="output",
                    help="Name of the output .h5 file")
 
+    p.add_argument('--mode', type=str, default='',help='Mode for processing the data: \n'\
+                   +'  default (''): process this many jets, and perform the train/test split\n'\
+                   +'  train: process only the training jets, do the pT reweighting and scaling on all jets\n'\
+                   +'  test: process only the test jets, loading in the scalingfile from the scalingfile arg\n')
+
+    p.add_argument('--onlyCuts',action=store_true,
+                   help="Just write the jet df and track xarray files out, and \don't\ do the ML preprocessing.\n"\
+                       +'(wait till the concat step).')
+
     args = p.parse_args()
 
     fName = args.filename
     tName = args.tName
     outputFile = args.output
+    mode = args.mode
+    onlyCuts = args.onlyCuts
+
+    # Check some of the arguments validity
+    print(mode)
+    assert (mode == 'train') or (mode == 'test') or (len(mode) == 0)
 
 
-    # Step 0: Open the file 
-    f = uproot.open(fName)
-
-    # Step 1: Read in the number of events
-    t = f[tName]
-    nEntries = t.num_entries
+    if ".root" in fName:
 
 
-    # Step 2a: Load in the jets
-    jdf = t.arrays(jet_vars,library='pd',aliases=jalias)
-    jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
+        # Step 0: Open the file 
+        f = uproot.open(fName)
 
-    # Step 2b: Read in just a part of the tree and batch the track preprocessing over these chunks
-    batch_size = 1500
-    chunks = np.arange(0,nEntries+batch_size, batch_size)
-
-    # Subset of the track vars (needed for training dips and / or GN1/2)
-    tVars = ['d0','z0','var_d0', 'var_z0','qOverP','theta','phi','numPix','numSCT']
-
-    iVars = tVars + ['sd0','sz0']
-    deriv_vars= ['dr','ptfrac']
-
-    maxNumTrks=40
-
-    trk_xr = xr.DataArray(0.,
-                      coords=[('jet',np.arange(np.sum(jmask))),
-                              ('trk',np.arange(maxNumTrks)),
-                              ('var',iVars+deriv_vars)])
+        # Step 1: Read in the number of events
+        t = f[tName]
+        nEntries = t.num_entries
 
 
-    i=0
-    for start, stop in tqdm(zip(chunks[:-1],chunks[1:])):
+        # Step 2a: Load in the jets
+        jdf = t.arrays(jet_vars+["EventNumber"],library='pd',aliases=jalias)
+        jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
 
-        jdf_i   =   jdf.loc[(slice(start,stop-1),slice(None))]
-        jmask_i = jmask.loc[(slice(start,stop-1),slice(None))]
+        if mode == 'test': 
+            # Only keep even events
+            jmask = jmask & (jdf["EventNumber"] % 2 == 0)
+        elif mode == 'train': 
+            # Only keep odd events
+            jmask = jmask & (jdf["EventNumber"] % 2 == 1)
+        else:
+            # Keep all the events
+            pass
 
-        t_np_i = processBatch(t,start,stop,jdf_i,jmask_i,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
+        # Step 2b: Read in just a part of the tree and batch the track preprocessing over these chunks
+        batch_size = 1500
+        chunks = np.arange(0,nEntries+batch_size, batch_size)
 
-        trk_xr[i:i+t_np_i.shape[0]] = t_np_i         
-        i += t_np_i.shape[0]
+        # Subset of the track vars (needed for training dips and / or GN1/2)
+        tVars = ['d0','z0','var_d0', 'var_z0','qOverP','theta','phi','numPix','numSCT']
+
+        iVars = tVars + ['sd0','sz0']
+        deriv_vars= ['dr','ptfrac']
+
+        maxNumTrks=40
+
+        trk_xr = xr.DataArray(0.,
+                          coords=[('jet',np.arange(np.sum(jmask))),
+                                  ('trk',np.arange(maxNumTrks)),
+                                  ('var',iVars+deriv_vars)])
 
 
-    jdf = jdf[jmask] 
+        i=0
+        for start, stop in tqdm(zip(chunks[:-1],chunks[1:])):
 
-    # Step 3: Jet pt reweighting
-    pTReweight(jdf)
+            jdf_i   =   jdf.loc[(slice(start,stop-1),slice(None))]
+            jmask_i = jmask.loc[(slice(start,stop-1),slice(None))]
+
+            t_np_i = processBatch(t,start,stop,jdf_i,jmask_i,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
+
+            trk_xr[i:i+t_np_i.shape[0]] = t_np_i         
+            i += t_np_i.shape[0]
+
+        jdf = jdf[jmask] 
+
+    else:
+        raise NotImplementedError
+
+        jdf, trk_xr = concatData(fName)
+
+    if onlyCuts:
+        print('Just apply the cuts, save and return.')
+
+        if '.h5' in outputFile:
+            jet_fout = outputFile
+            trk_fout = outputFile.replace('.h5','.nc')
+        elif '.nc' in outputFile:
+            jet_fout = outputFile.replace('.nc','.h5')
+            trk_fout = outputFile
+        else:
+            print(f'Output file fmt for {outputFile} not supported')
+            raise NotImplementedError
+
+        jet_df.to_hdf(jet_fout)
+        trk_xr.to_netcdf(trk_fout)
+
+        return
+
+    if mode != 'test':
+      # Step 3: Jet pt reweighting
+      pTReweight(jdf)
 
     # Step 4: ML pre-processing
-    prepareForKeras(jdf,trk_xr,outputFile)
+    prepareForKeras(jdf,trk_xr,outputFile,mode)
 
   
