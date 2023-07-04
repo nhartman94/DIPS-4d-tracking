@@ -41,7 +41,7 @@ trk_vars  = ['d0','z0','theta','phi','qOverP']
 trk_vars += [f'var_{v}' for v in trk_vars]
 
 trk_vtrk_vars= ['t','z']  
-trk_vars += [f't{n}' for n in [30,60,90,120,180]]
+trk_vars += [f't{n}' for n in [30,60,90]]
 
 talias = {v: f'track_{v}' for v in trk_vars}
 
@@ -141,7 +141,7 @@ def concatData(fName):
        is_jet_df = False
     else:
         print(f'File format for {fName} not supported: should be .h5 or .nc')
-        raise NotImplemented Error
+        raise NotImplementedError
 
     # Step 1: Load in all the files and make a list
     jdfs = []
@@ -282,7 +282,7 @@ def scale(data, var_names, savevars, filename='data/trk_scales.json', mask_value
             varinfo['n_samples_seen'] = scaler.n_samples_seen_
             scaler.transform(jetData)
 
-def prepareForKeras(jet,trk_xr,outputFile,mode=''):
+def prepareForKeras(jdf,trk_xr,outputFile,mode=''):
     '''
     Prepare the ML inputs for keras and save the file
     
@@ -381,9 +381,10 @@ def prepareForKeras(jet,trk_xr,outputFile,mode=''):
     f.close() 
 
 
-if __name__ == '__main__':
 
-    from argparse import ArgumentParser
+from argparse import ArgumentParser
+
+def main():
 
     p = ArgumentParser()
 
@@ -407,7 +408,7 @@ if __name__ == '__main__':
                    +'  train: process only the training jets, do the pT reweighting and scaling on all jets\n'\
                    +'  test: process only the test jets, loading in the scalingfile from the scalingfile arg\n')
 
-    p.add_argument('--onlyCuts',action=store_true,
+    p.add_argument('--onlyCuts',action="store_true",
                    help="Just write the jet df and track xarray files out, and \don't\ do the ML preprocessing.\n"\
                        +'(wait till the concat step).')
 
@@ -422,7 +423,6 @@ if __name__ == '__main__':
     # Check some of the arguments validity
     print(mode)
     assert (mode == 'train') or (mode == 'test') or (len(mode) == 0)
-
 
     if ".root" in fName:
 
@@ -500,7 +500,6 @@ if __name__ == '__main__':
 
         jet_df.to_hdf(jet_fout)
         trk_xr.to_netcdf(trk_fout)
-
         return
 
     if mode != 'test':
@@ -511,3 +510,5 @@ if __name__ == '__main__':
     prepareForKeras(jdf,trk_xr,outputFile,mode)
 
   
+if __name__ == '__main__':
+    main()
