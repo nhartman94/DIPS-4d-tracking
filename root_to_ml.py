@@ -396,7 +396,7 @@ def main():
     p.add_argument('--tName', type=str,
                    default="EventTree",
                    dest="tName",
-                   help="path to and name of the root file")
+                   help="name of the tree")
 
     p.add_argument('--output', type=str,
                    default="data/output.hdf5",
