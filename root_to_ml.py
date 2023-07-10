@@ -20,6 +20,7 @@ Nicole Hartman
 Summer 2023
 '''
 
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -46,16 +47,9 @@ trk_vars += [f't{n}' for n in [30,60,90]]
 talias = {v: f'track_{v}' for v in trk_vars}
 
 trk_vars += ['numPix','numSCT','numPix1L','numPix2L']
-for v in trk_vars[-4:]:
-    talias[v] = f'tracks_{v}'
+
 
 # derived vars 
-talias['sd0'] = 'd0/var_d0'
-talias['abs_sd0'] = 'abs(d0)'
-talias['sz0'] = 'z0/var_z0'
-talias['pt']  = '0.001 * abs(1/qOverP) * sin(theta)'
-talias['eta']  = '- log(tan(theta/2))'
-
 
 def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var="abs_sd0"):
     '''
@@ -64,12 +58,11 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     '''
 
     # load in the track level array
+
     tak = t.arrays(trk_vars+['sd0','sz0','pt','eta','abs_sd0'],aliases=talias,
                    entry_start=start,entry_stop=stop)
 
     nEvts = len(tak)
-    print(f'In processBatch, start={start}, stop={stop}, len(tak)={nEvts}')
-
     jet_trk_idx = t.arrays('jet_tracks_idx',entry_start=start,entry_stop=stop)['jet_tracks_idx']
 
     """
@@ -81,11 +74,13 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     - and the same mask gets applied to jdf
     """
     njets_all = np.array([len(jdf.loc[i,'pt']) for i in range(start,start+nEvts)])
+    
     jmask_hier = ak.unflatten(jmask,counts=njets_all)
 
     tarr = ak.Array([tak_i[jlinks] for tak_i,evt_lev_links,jmask_evt in zip(tak,jet_trk_idx,jmask_hier) 
-                 for jlinks, jmask_i in zip(evt_lev_links,jmask_evt) if jmask_i])
-
+                     for jlinks, jmask_i in zip(evt_lev_links,jmask_evt) if (jmask_i) ])
+    
+    
     jdf = jdf[jmask]
 
     # 1. Mask
@@ -93,6 +88,7 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     TO DO: Add the z0 * sin(theta) < 5 mm cut
     (and pixel quality cuts? or are those already here?)
     '''
+    
     tmask = (tarr['pt'] > 0.5) & (abs(tarr['d0']) < 3.5)
     
     # Sort
@@ -110,7 +106,7 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     
     tnp = np.zeros((len(jdf),maxNumTrks,len(iVars)+len(deriv_vars)))  
 
-    assert len(iVars) + 2 == tnp.shape[-1] # Sanity check the dimensions
+    assert len(iVars) + len(deriv_vars) == tnp.shape[-1] # Sanity check the dimensions
 
     for i,v in enumerate(iVars):
         padded = ak.fill_none(ak.pad_none(tarr[tmask][idx][v], maxNumTrks, clip=True), 0)
@@ -382,6 +378,13 @@ def prepareForKeras(jdf,trk_xr,outputFile,mode=''):
 
 
 
+def create_folders(outputFile):
+    directory = os.path.dirname(output_file)
+    
+    if directory != '':
+        os.makedirs(directory,exist_ok=True)
+    
+
 from argparse import ArgumentParser
 
 def main():
@@ -412,17 +415,44 @@ def main():
                    help="Just write the jet df and track xarray files out, and \don't\ do the ML preprocessing.\n"\
                        +'(wait till the concat step).')
 
+    p.add_argument('--acts',action="store_true",
+                   help="Set to true to run on the acts ntuple")
+    
     args = p.parse_args()
 
     fName = args.filename
     tName = args.tName
     outputFile = args.output
+    create_folders(outputFile)
+    
     mode = args.mode
+    acts = args.acts
     onlyCuts = args.onlyCuts
 
     # Check some of the arguments validity
-    print(mode)
+    print("Mode", mode)
     assert (mode == 'train') or (mode == 'test') or (len(mode) == 0)
+
+    
+    # Setup the derived variables name  
+    
+    if not acts :
+        talias['sd0'] = 'd0/var_d0'
+        talias['abs_sd0'] = 'abs(d0)'
+        talias['sz0'] = 'z0/var_z0'
+        talias['pt']  = '0.001 * abs(1/qOverP) * sin(theta)'
+        talias['eta']  = '- log(tan(theta/2))'
+        for v in trk_vars[-4:]:
+            talias[v] = f'tracks_{v}'
+    else:
+        talias['sd0']     = 'track_signedd0sig'
+        talias['abs_sd0'] = 'abs(track_signedd0sig)'
+        talias['sz0']     = 'track_signedz0sinThetasig'
+        talias['pt']      = 'track_pt'
+        talias['eta']     = 'track_eta'
+        for v in trk_vars[-4:]:
+            talias[v] = f'track_{v}'
+
 
     if ".root" in fName:
 
@@ -433,12 +463,13 @@ def main():
         # Step 1: Read in the number of events
         t = f[tName]
         nEntries = t.num_entries
-
-
+        
         # Step 2a: Load in the jets
         jdf = t.arrays(jet_vars+["EventNumber"],library='pd',aliases=jalias)
-        jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & jdf['isHS'].astype('bool')
-
+        
+        jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & (jdf['isHS'].astype('bool')) #& (jdf['tracks_idx'].apply(lambda x: len(x) > 0))
+                                                                                              
+        
         if mode == 'test': 
             # Only keep even events
             jmask = jmask & (jdf["EventNumber"] % 2 == 0)
@@ -452,13 +483,14 @@ def main():
         # Step 2b: Read in just a part of the tree and batch the track preprocessing over these chunks
         batch_size = 1500
         chunks = np.arange(0,nEntries+batch_size, batch_size)
+        
 
         # Subset of the track vars (needed for training dips and / or GN1/2)
         tVars = ['d0','z0','var_d0', 'var_z0','qOverP','theta','phi','numPix','numSCT']
 
         iVars = tVars + ['sd0','sz0']
         deriv_vars= ['dr','ptfrac']
-
+        
         maxNumTrks=40
 
         trk_xr = xr.DataArray(0.,
@@ -466,13 +498,15 @@ def main():
                                   ('trk',np.arange(maxNumTrks)),
                                   ('var',iVars+deriv_vars)])
 
-
+        
         i=0
         for start, stop in tqdm(zip(chunks[:-1],chunks[1:])):
-
+            
+            print("Batch:",start,stop)
+            
             jdf_i   =   jdf.loc[(slice(start,stop-1),slice(None))]
             jmask_i = jmask.loc[(slice(start,stop-1),slice(None))]
-
+            
             t_np_i = processBatch(t,start,stop,jdf_i,jmask_i,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
 
             trk_xr[i:i+t_np_i.shape[0]] = t_np_i         
