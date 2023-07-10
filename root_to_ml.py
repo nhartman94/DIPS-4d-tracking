@@ -17,7 +17,6 @@ TO DO: (with the latest generic ACTS Ntuple)
 
 
 Nicole Hartman
-e il porcoddio
 Summer 2023
 '''
 
