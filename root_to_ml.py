@@ -20,7 +20,7 @@ Nicole Hartman
 Summer 2023
 '''
 
-
+import os
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -379,7 +379,7 @@ def prepareForKeras(jdf,trk_xr,outputFile,mode=''):
 
 
 def create_folders(outputFile):
-    directory = os.path.dirname(output_file)
+    directory = os.path.dirname(outputFile)
     
     if directory != '':
         os.makedirs(directory,exist_ok=True)
