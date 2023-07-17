@@ -20,7 +20,7 @@ Nicole Hartman
 Summer 2023
 '''
 
-import os
+import os,sys
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -65,6 +65,9 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     nEvts = len(tak)
     jet_trk_idx = t.arrays('jet_tracks_idx',entry_start=start,entry_stop=stop)['jet_tracks_idx']
 
+    #Get the entries that actually exist in the dataframe. This hopefully fixes missing data. 
+    jdf_entries = np.unique([i[0] for i in jdf.index])
+
     """
     This has the structure I want: 
     nJets, nTrks, nFeatures
@@ -73,7 +76,7 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     - the tracks we select (in the tarr computation) 
     - and the same mask gets applied to jdf
     """
-    njets_all = np.array([len(jdf.loc[i,'pt']) for i in range(start,start+nEvts)])
+    njets_all = np.array([len(jdf.loc[i,'pt']) if i in jdf_entries else 0 for i in range(start,start+nEvts)])
     
     jmask_hier = ak.unflatten(jmask,counts=njets_all)
 
@@ -89,6 +92,10 @@ def processBatch(t,start,stop,jdf,jmask,iVars,deriv_vars,maxNumTrks=40,sort_var=
     (and pixel quality cuts? or are those already here?)
     '''
     
+    # Protection against running on single events that do not contain tracks
+    if len(tarr) < 1:
+        return None
+
     tmask = (tarr['pt'] > 0.5) & (abs(tarr['d0']) < 3.5)
     
     # Sort
@@ -466,7 +473,10 @@ def main():
         
         # Step 2a: Load in the jets
         jdf = t.arrays(jet_vars+["EventNumber"],library='pd',aliases=jalias)
-        
+
+
+        #print(jdf.to_string())
+                
         jmask = (jdf['pt'] > 20) & (np.abs(jdf['eta']) < 4) & (jdf['isHS'].astype('bool')) #& (jdf['tracks_idx'].apply(lambda x: len(x) > 0))
                                                                                               
         
@@ -502,13 +512,20 @@ def main():
         i=0
         for start, stop in tqdm(zip(chunks[:-1],chunks[1:])):
             
+            #if start < 812:
+            #    continue
+            
             print("Batch:",start,stop)
             
             jdf_i   =   jdf.loc[(slice(start,stop-1),slice(None))]
             jmask_i = jmask.loc[(slice(start,stop-1),slice(None))]
             
             t_np_i = processBatch(t,start,stop,jdf_i,jmask_i,maxNumTrks=maxNumTrks,iVars=iVars,deriv_vars=deriv_vars)   
-
+            
+            if not np.any(t_np_i):
+                print("Failed batch")
+                continue
+                
             trk_xr[i:i+t_np_i.shape[0]] = t_np_i         
             i += t_np_i.shape[0]
 
